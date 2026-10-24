@@ -3,9 +3,16 @@
 // the same {type:"conv_message"} stream — see hub/main.py handle_conv_text). Unreviewed, like
 // Free Talk: every bubble shows the machine-translated text, growing token by token while
 // `done` is false, never used for safety content.
+import { useEffect, useRef } from "react";
 import { Icon } from "@/lib/icons";
 
 export function ConvThread({ messages, mineFrom }) {
+  const end = useRef(null);
+  const last = messages[messages.length - 1];
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, last?.translated, last?.done]);
+
   if (!messages.length) return <p className="conv-empty">…</p>;
   return (
     <div className="conv-thread">
@@ -15,6 +22,7 @@ export function ConvThread({ messages, mineFrom }) {
           <p className="conv-text">{m.translated || "…"}{!m.done ? <span className="conv-typing"> ●●●</span> : null}</p>
         </div>
       ))}
+      <div ref={end} />
     </div>
   );
 }
@@ -23,6 +31,14 @@ export function ConvToggle({ on, onClick, label }) {
   return (
     <button type="button" className={`conv-toggle ${on ? "on" : ""}`} onClick={onClick}>
       <Icon id={on ? "stop" : "chat"} />{label}
+    </button>
+  );
+}
+
+export function MuteButton({ muted, onClick, label }) {
+  return (
+    <button type="button" className="hdr-icon-btn" onClick={onClick} aria-pressed={muted} aria-label={label} title={label}>
+      <Icon id={muted ? "mute" : "speaker"} />
     </button>
   );
 }

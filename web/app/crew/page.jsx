@@ -6,10 +6,10 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Recorder, connect, crewFetch, loadConfig, toBase64 } from "@/lib/hub";
 import { Icon } from "@/lib/icons";
 import { Picto } from "@/lib/pictograms";
-import { canSpeak, speakNatural as speak } from "@/lib/speech";
+import { canSpeak, speakNatural as speak, unlockAudio } from "@/lib/speech";
 import { Ambient, AppHeader, ease } from "@/components/ui";
 import { FreeTalkPanel } from "@/components/freetalk";
-import { ConvThread } from "@/components/liveconversation";
+import { ConvThread, MuteButton } from "@/components/liveconversation";
 
 const STATUS = {
   urgent_unconfirmed: ["至急・未確認", "Urgent, unconfirmed", "bad"],
@@ -33,6 +33,7 @@ export default function Crew() {
   const [online, setOnline] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [readAloud, setReadAloud] = useState(false);
+  const [convMuted, setConvMuted] = useState(false);
   const [jaVoice, setJaVoice] = useState(false);
   const [pb, setPb] = useState(null);           // {seat, lang}
   const [conv, setConv] = useState({});         // seat -> { open, messages: [] }
@@ -42,7 +43,7 @@ export default function Crew() {
   const [paRecOn, setPaRecOn] = useState(false);
   const socket = useRef(null), audio = useRef(null), paRec = useRef(null);
   const seenUrgent = useRef(new Set()), announced = useRef(null), announcedSymptom = useRef(new Set());
-  const opts = useRef({ soundOn: true, readAloud: false }); opts.current = { soundOn, readAloud };
+  const opts = useRef({ soundOn: true, readAloud: false, convMuted: false }); opts.current = { soundOn, readAloud, convMuted };
 
   function beep() {
     if (!opts.current.soundOn || !audio.current) return;
@@ -74,7 +75,7 @@ export default function Crew() {
   }
 
   useEffect(() => {
-    const unlock = () => { audio.current ??= new AudioContext(); };
+    const unlock = () => { audio.current ??= new AudioContext(); unlockAudio(); };
     addEventListener("pointerdown", unlock, { once: true });
     canSpeak("ja").then(setJaVoice);
     loadConfig().then((c) => {
@@ -104,7 +105,7 @@ export default function Crew() {
           // a live conversation is spoken, not just displayed: crew hears the passenger's
           // message in Japanese as soon as it finishes streaming, same as the passenger hears
           // crew's reply in their own language (app/passenger/page.jsx's onMessage)
-          if (msg.from === "passenger" && msg.done && msg.translated) speak(msg.translated, "ja");
+          if (msg.from === "passenger" && msg.done && msg.translated && !opts.current.convMuted) speak(msg.translated, "ja");
         }
       }, setOnline);
     });
@@ -234,7 +235,7 @@ export default function Crew() {
                 <span key={k}><Icon id={a.icon} /> {new Date(a.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} {a.title_ja} · {a.text_en}</span>))}</div> : null}
             </section>
 
-            {cfg.free_talk ? <CrewLiveConversation conv={conv} send={send} /> : null}
+            {cfg.free_talk ? <CrewLiveConversation conv={conv} send={send} muted={convMuted} onToggleMute={() => setConvMuted((m) => !m)} /> : null}
             {cfg.free_talk ? <CrewFreeTalk cfg={cfg} LANG_NAME={LANG_NAME} /> : null}
 
             <section className="panel">
@@ -284,7 +285,7 @@ function CardView({ c, cfg, send, onTalk }) {
   );
 }
 
-function CrewLiveConversation({ conv, send }) {
+function CrewLiveConversation({ conv, send, muted, onToggleMute }) {
   const openSeats = Object.keys(conv).filter((s) => conv[s]?.open);
   const [picked, setPicked] = useState(null);
   const active = picked && openSeats.includes(picked) ? picked : openSeats[0] || null;
@@ -294,6 +295,7 @@ function CrewLiveConversation({ conv, send }) {
     <section className="panel">
       <div className="row">
         <span className="panel-title grow">自由会話 Live Conversation <span className="pill dim" style={{ fontWeight: 400, textTransform: "none" }}>unreviewed translation</span></span>
+        <MuteButton muted={muted} onClick={onToggleMute} label={muted ? "音声オフ Unmute" : "音声オン Mute"} />
         {openSeats.length ? (
           <select aria-label="Seat" value={active || ""} onChange={(e) => setPicked(e.target.value)}>
             {openSeats.map((s) => <option key={s} value={s}>{s}</option>)}

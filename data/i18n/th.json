@@ -56,5 +56,9 @@
   "settingsTitle": "การตั้งค่า",
   "liveConv": "สนทนาสด",
   "convListening": "กำลังฟัง… พูดได้เลย ไม่ต้องแตะ",
-  "convSpeaking": "กำลังฟังคุณ…"
+  "convSpeaking": "กำลังฟังคุณ…",
+  "noRequestsTitle": "ยังไม่มีคำขอ",
+  "noRequestsSub": "คำขอของคุณจะปรากฏที่นี่",
+  "mute": "ปิดเสียง",
+  "unmute": "เปิดเสียง"
 }

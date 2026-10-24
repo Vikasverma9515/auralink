@@ -5,9 +5,9 @@ import { useEffect, useReducer, useRef } from "react";
 import { Recorder, VadRecorder, connect, loadConfig, params } from "@/lib/hub";
 import { Icon } from "@/lib/icons";
 import { Picto } from "@/lib/pictograms";
-import { canSpeak, speakNatural as speak } from "@/lib/speech";
+import { canSpeak, speakNatural as speak, unlockAudio } from "@/lib/speech";
 import { Ambient, Sheet, ease, useFlash } from "@/components/ui";
-import { ConvThread, ConvToggle } from "@/components/liveconversation";
+import { ConvThread, ConvToggle, MuteButton } from "@/components/liveconversation";
 
 export default function Passenger() {
   const [, bump] = useReducer((x) => x + 1, 0);
@@ -16,7 +16,7 @@ export default function Passenger() {
   const [flashFrame, flash] = useFlash();
   if (!st.current) st.current = { ready: false, strings: {}, fallback: {}, lang: "en", senior: false, pictures: false, readAloud: false, voiceOK: false,
     micState: "idle", micNote: "", requests: new Map(), pending: [], waitingTriage: null, sheet: null, caption: null, online: false, titleOverride: null, seat: "34K",
-    conv: { open: false, speaking: false, messages: [] } };
+    conv: { open: false, speaking: false, muted: false, messages: [] } };
   const s = st.current;
   const socket = useRef(null);
   const recorder = useRef(null);
@@ -251,7 +251,7 @@ export default function Passenger() {
     } else if (msg.type === "conv_message") {
       const i = s.conv.messages.findIndex((m) => m.id === msg.id);
       if (i >= 0) s.conv.messages[i] = msg; else s.conv.messages = [...s.conv.messages, msg];
-      if (msg.from === "crew" && msg.done && msg.translated) speak(msg.translated, s.lang);
+      if (msg.from === "crew" && msg.done && msg.translated && !s.conv.muted) speak(msg.translated, s.lang);
       bump();
     }
   }
@@ -311,6 +311,7 @@ export default function Passenger() {
   }
 
   useEffect(() => {
+    addEventListener("pointerdown", unlockAudio, { once: true });
     let alive = true, markReady;
     const ready = new Promise((r) => (markReady = r));
     const p = params();
@@ -347,7 +348,7 @@ export default function Passenger() {
       markReady();
       if (askLanguage) chooseLanguage();
     })();
-    return () => { alive = false; socket.current?.close(); vad.current?.stop(); };
+    return () => { alive = false; socket.current?.close(); vad.current?.stop(); removeEventListener("pointerdown", unlockAudio); };
   }, []); // eslint-disable-line
 
   if (!s.ready) return (<><Ambient /><div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}><span className="mono faint">Auralink · connecting to the cabin…</span></div></>);
@@ -382,7 +383,11 @@ export default function Passenger() {
             </div>
             {s.conv.open ? (
               <div className="conv-panel">
-                <div className="conv-status"><span className={`listen-dot ${s.conv.speaking ? "speaking" : ""}`} />{t(s.conv.speaking ? "convSpeaking" : "convListening")}</div>
+                <div className="conv-status">
+                  <span className={`listen-dot ${s.conv.speaking ? "speaking" : ""}`} />
+                  <span className="grow">{t(s.conv.speaking ? "convSpeaking" : "convListening")}</span>
+                  <MuteButton muted={s.conv.muted} onClick={() => { s.conv.muted = !s.conv.muted; bump(); }} label={t(s.conv.muted ? "unmute" : "mute")} />
+                </div>
                 <ConvThread messages={s.conv.messages} mineFrom="passenger" />
               </div>
             ) : null}
@@ -423,7 +428,13 @@ export default function Passenger() {
                   <Listen lines={[r.label, r.message]} />
                 </motion.div>))}
             </AnimatePresence>
-            {!reqs.length ? <p className="faint" style={{ margin: 0, fontSize: 14 }}>—</p> : null}
+            {!reqs.length ? (
+              <div className="empty-state">
+                <span className="icon"><Icon id="inbox" /></span>
+                <p className="empty-title">{t("noRequestsTitle")}</p>
+                <p className="empty-sub">{t("noRequestsSub")}</p>
+              </div>
+            ) : null}
           </div>
         </motion.section>
       </main>

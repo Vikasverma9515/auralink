@@ -56,5 +56,9 @@
   "settingsTitle": "Settings",
   "liveConv": "Live conversation",
   "convListening": "Listening… just talk, no need to tap",
-  "convSpeaking": "Hearing you…"
+  "convSpeaking": "Hearing you…",
+  "noRequestsTitle": "No requests yet",
+  "noRequestsSub": "Your requests will appear here.",
+  "mute": "Mute voice",
+  "unmute": "Unmute voice"
 }

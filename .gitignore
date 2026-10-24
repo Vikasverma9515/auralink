@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+certs/
+data/recordings/*
+!data/recordings/README.md
+eval/.ipynb_checkpoints/
+models/
+.claude/
+# speech-to-text transcripts; will include volunteer speech
+eval/cache/
+data/flight/
+
+# local settings (crew PIN); the template .env.example is committed
+.env

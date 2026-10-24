@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auralink · Under the hood</title>
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <link rel="stylesheet" href="judge.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./" aria-label="Auralink home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 16c3-7 6-7 8 0s5 7 8 0 5-7 8 0" class="bm-wave"/><path d="M4 22h24" class="bm-line"/></svg>
+      <span>Auralink</span><span class="crumb">Under the hood</span>
+    </a>
+    <span class="live" id="live"><i></i><span>Connecting…</span></span>
+    <form class="try" id="try">
+      <label class="sr-only" for="tryText">Try a phrase</label>
+      <input id="tryText" placeholder="Type a phrase, or speak on a passenger screen" autocomplete="off" maxlength="200">
+      <label class="sr-only" for="tryPhase">Flight phase</label>
+      <select id="tryPhase">
+        <option value="boarding">Boarding</option><option value="cruise" selected>Cruise</option>
+        <option value="meal">Meal service</option><option value="post_meal">After meal</option><option value="descent">Descent</option>
+      </select>
+      <button type="submit">Explain</button>
+    </form>
+  </header>
+
+  <main id="main">
+    <section class="empty" id="empty">
+      <h1>Every decision, in the open.</h1>
+      <p>Speak on a passenger screen or type a phrase above. This screen shows what Auralink heard, which sounds it
+        matched, how it scored them, and why it asked or didn’t.</p>
+      <div class="examples" id="examples">
+        <button>Shawchale kaha hai</button>
+        <button>Madham thora wotar and cumble please</button>
+        <button>I can't breathe</button>
+        <button>शोचाले कहा है</button>
+        <button>Mujhi ik takyaadiji</button>
+      </div>
+    </section>
+
+    <div id="view" hidden>
+      <section class="pipeline" aria-label="Pipeline timing">
+        <div class="stage" data-key="vad"><span class="s-name">Silence filter</span><b>–</b></div>
+        <div class="stage" data-key="encode"><span class="s-name">Whisper encoder</span><b>–</b></div>
+        <div class="stage" data-key="decode_en"><span class="s-name">English guesses</span><b>–</b></div>
+        <div class="stage" data-key="decode_hi"><span class="s-name">Hindi guesses</span><b>–</b></div>
+        <div class="stage" data-key="match"><span class="s-name">Phonetic matcher</span><b>–</b></div>
+        <div class="budget" id="budget"></div>
+      </section>
+
+      <div class="grid2">
+        <section class="panel">
+          <h2><span class="n">1</span>What was heard</h2>
+          <div id="wave"></div>
+          <ol class="nbest" id="nbest"></ol>
+        </section>
+        <section class="panel">
+          <h2><span class="n">2</span>Words that matter</h2>
+          <p class="hint">Filler words are ignored, matched by sound too, so “madham” counts as “madam”.</p>
+          <div class="tokens" id="tokens"></div>
+          <div class="decision" id="decision"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2><span class="n">3</span>Requests found, and how each was scored</h2>
+        <div id="cards"></div>
+      </section>
+
+      <section class="panel history">
+        <h2>Recent</h2>
+        <ol id="history"></ol>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="judge.js"></script>
+</body>
+</html>

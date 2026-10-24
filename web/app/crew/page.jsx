@@ -101,6 +101,10 @@ export default function Crew() {
               : [...prev.messages, msg];
             return { ...c, [msg.seat]: { ...prev, messages } };
           });
+          // a live conversation is spoken, not just displayed: crew hears the passenger's
+          // message in Japanese as soon as it finishes streaming, same as the passenger hears
+          // crew's reply in their own language (app/passenger/page.jsx's onMessage)
+          if (msg.from === "passenger" && msg.done && msg.translated) speak(msg.translated, "ja");
         }
       }, setOnline);
     });

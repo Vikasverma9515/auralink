@@ -317,26 +317,27 @@ export default function Passenger() {
 
       <main className="app" style={{ maxWidth: 980 }}>
         {!s.pictures ? (
-          <motion.section className="panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease }}>
-            <h2>{t("typeHint")}</h2>
-            <button type="button" className={`mic ${s.micState === "recording" ? "recording" : ""}`} onClick={toggleMic}
-              disabled={s.micState === "thinking" || s.micState === "off"}>
-              {s.micState === "recording" ? <motion.span className="icon" animate={{ scale: [1, 1.25, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}><Icon id="mic" /></motion.span> : <Icon id="mic" />}
-              <span>{micLabel}</span>
-              {s.micState === "thinking" ? <motion.span style={{ display: "inline-flex", gap: 4 }}>{[0, 1, 2].map((k) => (
-                <motion.i key={k} style={{ width: 6, height: 6, borderRadius: 3, background: "var(--accent)", display: "block" }}
-                  animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: k * 0.18 }} />))}</motion.span> : null}
-              <span className="level" ref={level} style={{ width: 0 }} />
-            </button>
-            {s.micNote ? <p className="muted" style={{ margin: 0 }}>{t(s.micNote)}</p> : null}
-            <form className="row" onSubmit={(e) => {
+          <motion.section className="panel ask-hero" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease }}>
+            <div>
+              <h2>{t("typeHint")}</h2>
+              {s.micState === "thinking" ? (
+                <p className="sub"><span className="ask-thinking">{[0, 1, 2].map((k) => (
+                  <motion.i key={k} animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: k * 0.18 }} />))}</span> {t("thinking")}</p>
+              ) : s.micNote ? <p className="sub">{t(s.micNote)}</p> : null}
+            </div>
+            <form className="ask-bar" onSubmit={(e) => {
               e.preventDefault();
               const input = e.currentTarget.elements.text; const text = input.value.trim();
               if (!text) return;
               socket.current.send({ type: "text", text }); input.value = "";
             }}>
-              <input className="grow" name="text" autoComplete="off" placeholder="thoda wotter and kambal" />
-              <button className="primary" type="submit">{t("send")}</button>
+              <button type="button" className={`ask-round mic-on ${s.micState === "recording" ? "recording" : ""}`} onClick={toggleMic}
+                disabled={s.micState === "thinking" || s.micState === "off"} aria-label={micLabel} title={micLabel}>
+                {s.micState === "recording" ? <motion.span className="icon" animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1.1 }}><Icon id="mic" /></motion.span> : <Icon id="mic" />}
+                <span className="level" ref={level} />
+              </button>
+              <input className="grow" name="text" autoComplete="off" placeholder="thoda wotter and kambal" aria-label={t("typeHint")} />
+              <button className="ask-round send" type="submit" aria-label={t("send")} title={t("send")}><Icon id="arrow" /></button>
             </form>
           </motion.section>
         ) : null}
@@ -364,7 +365,7 @@ export default function Passenger() {
         </motion.section>
       </main>
 
-      <Sheet content={s.sheet} big={s.senior} />
+      <Sheet content={s.sheet} big={s.senior} onClose={closeSheet} />
 
       <AnimatePresence>
         {s.caption ? (

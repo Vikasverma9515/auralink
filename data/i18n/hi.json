@@ -53,5 +53,8 @@
   "suggestOrSend": "या यह संदेश क्रू को भेजें (अनुवादित, जाँचा नहीं गया)",
   "suggestSendBtn": "क्रू को भेजें",
   "suggestOrPicture": "या इसके बजाय एक तस्वीर चुनें",
-  "settingsTitle": "सेटिंग्स"
+  "settingsTitle": "सेटिंग्स",
+  "liveConv": "लाइव बातचीत",
+  "convListening": "सुन रहे हैं… बस बोलिए, टैप करने की ज़रूरत नहीं",
+  "convSpeaking": "आपकी बात सुन रहे हैं…"
 }

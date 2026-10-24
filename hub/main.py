@@ -5,6 +5,7 @@ Run:  scripts/run.sh   then open  http://<laptop-ip>:8000/
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import os
@@ -224,6 +225,9 @@ def crew_state() -> dict:
         "pa_log": [{**a, **pa_library.caption(a["id"], "en", a.get("n"))} for a in cabin.pa_log[-5:]][::-1],
         "seat_needs": [s.model_dump(include={"id", "lang", "senior", "pictures", "read", "checked_in", "connected"})
                        for s in cabin.seats.values() if s.lang != "en" or s.senior or s.pictures or s.read],
+        # Live Conversation panels open right now, so a crew tablet that reconnects mid-call still
+        # knows which seats to show (conv_message itself only reaches sockets already connected).
+        "conv_seats": [s.id for s in cabin.seats.values() if s.conv_mode],
     }
 
 
@@ -554,7 +558,10 @@ async def passenger_ws(ws: WebSocket, seat: str) -> None:
                 raise WebSocketDisconnect(frame.get("code", 1000))
             try:
                 if frame.get("bytes") is not None:  # one utterance: 16 kHz mono int16 PCM
-                    await handle_audio(seat, frame["bytes"])
+                    if cabin.seats[seat].conv_mode:
+                        await handle_conv_audio(seat, frame["bytes"])
+                    else:
+                        await handle_audio(seat, frame["bytes"])
                 else:
                     await handle_passenger(seat, json.loads(frame["text"]))
             except (KeyError, ValueError) as e:  # bad card id or intent: report, keep the socket
@@ -625,6 +632,80 @@ async def handle_audio(seat: str, pcm: bytes) -> None:
     await push_crew()
 
 
+# --- Live Conversation: a free-running, two-way, streaming-translated chat between one seat and
+# crew. Unreviewed, like Free Talk's suggest cascade — shown with that same label, never used for
+# safety content. Turned on per seat with {type: "conv_start"}; while on, that seat's audio frames
+# go here instead of the intent matcher (see passenger_ws's dispatch, above). -------------------
+
+_conv_ids = itertools.count(1)
+
+
+async def _stream_translate_to(text: str, src: str, tgt: str, send) -> str | None:
+    """Runs engine.translate.translate_stream (sync, callback-driven) in a background thread and
+    awaits send(partial) for each token as it arrives, bridging it onto the event loop."""
+    from engine.translate import translate_stream
+
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+
+    def worker() -> None:
+        try:
+            for partial in translate_stream(text, src, tgt):
+                loop.call_soon_threadsafe(q.put_nowait, partial)
+        except Exception as e:  # model unavailable, bad language code
+            loop.call_soon_threadsafe(q.put_nowait, e)
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, None)
+
+    threading.Thread(target=worker, daemon=True).start()
+    last: str | None = None
+    while (item := await q.get()) is not None:
+        if isinstance(item, Exception):
+            raise item
+        last = item
+        await send(last)
+    return last
+
+
+async def handle_conv_text(seat: str, sender: str, text: str) -> None:
+    """One Live Conversation turn (typed by crew, or transcribed from passenger audio), streamed
+    through translation to both sides as it decodes, token by token."""
+    if not text.strip():
+        return
+    s = cabin.seats[seat]
+    src, tgt = ("ja", s.lang) if sender == "crew" else (s.lang, "ja")
+    mid = f"m{next(_conv_ids)}"
+
+    async def send(partial: str, done: bool = False) -> None:
+        msg = {"type": "conv_message", "seat": seat, "id": mid, "from": sender,
+              "original": text, "translated": partial, "done": done}
+        await to_seat(seat, msg)
+        await _send(crew, msg)
+
+    try:
+        final = await _stream_translate_to(text, src, tgt, send)
+    except Exception as e:
+        log.warning("live conversation translation failed (%s)", e)
+        final = None
+    await send(final, done=True)
+
+
+async def handle_conv_audio(seat: str, pcm: bytes) -> None:
+    import numpy as np
+
+    if len(pcm) > MAX_AUDIO_S * 16_000 * 2:
+        raise ValueError(f"utterance longer than {MAX_AUDIO_S} s")
+    audio = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768
+    try:
+        tr = await asyncio.to_thread(run_asr, audio, languages.asr_languages(cabin.seats[seat].lang))
+    except ImportError:
+        await to_seat(seat, {"type": "error", "detail": "voice unavailable: faster-whisper not installed"})
+        return
+    text = tr.hypotheses[0].text if tr.hypotheses else ""
+    if text:
+        await handle_conv_text(seat, "passenger", text)
+
+
 async def ask_symptom(card: Card) -> None:
     """A confirmed medical request: ask the passenger what is wrong, with pictures, so crew know before arriving."""
     if card.intent == "medical" and card.symptom is None:
@@ -681,6 +762,14 @@ async def handle_passenger(seat: str, msg: dict) -> None:
         check = cabin.exit_answer(seat, msg.get("answers", {}), bool(msg.get("reseat")), templates.exit_question_ids)
         await to_seat(seat, {"type": "exit_done", "result": check.result,
                              "message": templates.exit_done(check.result, s.lang)})
+
+    elif kind == "conv_start":
+        s.conv_mode = True
+        await _send(crew, {"type": "conv_state", "seat": seat, "open": True})
+
+    elif kind == "conv_end":
+        s.conv_mode = False
+        await _send(crew, {"type": "conv_state", "seat": seat, "open": False})
 
     await push_crew()
 
@@ -741,6 +830,8 @@ async def handle_crew(msg: dict) -> None:
         for check in cabin.start_exit_check(exit_seats()):
             view = templates.exit_view(cabin.seats[check.seat].lang)
             await _send(passengers[check.seat], {"type": "exit_check", "check": view})
+    elif kind == "conv_text":
+        await handle_conv_text(msg["seat"], "crew", msg.get("text", ""))
     await push_crew()
 
 

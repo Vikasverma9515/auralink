@@ -49,6 +49,8 @@ class Seat(BaseModel):
     checked_in: bool = False # preferences set at the airport / gate before boarding
     connected: bool = False
     failed_attempts: int = 0
+    conv_mode: bool = False  # Live Conversation panel is open: audio goes to engine/translate.py,
+                              # not the intent matcher (hub/main.py handle_conv_audio)
 
 
 # understood: first time; understood_again: after the simpler step-by-step version;

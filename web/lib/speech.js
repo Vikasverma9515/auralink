@@ -53,3 +53,23 @@ export async function speak(lines, lang, { rate = 0.9 } = {}) {
 export function stopSpeaking() {
   if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
+
+// Prefers Auralink's own offline voice (Kokoro, engine/tts.py — far more natural than the OS
+// voice above) and falls back to speak() above for a language Kokoro doesn't cover (Tamil,
+// Thai) or if the hub's model files aren't downloaded yet. Same "pre-approved text only" rule.
+export async function speakNatural(lines, lang, opts = {}) {
+  const text = [].concat(lines).filter(Boolean).join(". ");
+  if (!text) return false;
+  try {
+    const res = await fetch("/api/freetalk/speak", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, lang }),
+    });
+    if (res.ok) {
+      stopSpeaking();
+      const url = URL.createObjectURL(await res.blob());
+      new Audio(url).play().catch(() => {});
+      return true;
+    }
+  } catch { /* fall through to the browser's own voice */ }
+  return speak(lines, lang, opts);
+}

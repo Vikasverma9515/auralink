@@ -53,5 +53,8 @@
   "suggestOrSend": "หรือส่งข้อความนี้ให้ลูกเรือ (แปลโดยเครื่อง ยังไม่ได้ตรวจสอบ)",
   "suggestSendBtn": "ส่งให้ลูกเรือ",
   "suggestOrPicture": "หรือเลือกรูปภาพแทน",
-  "settingsTitle": "การตั้งค่า"
+  "settingsTitle": "การตั้งค่า",
+  "liveConv": "สนทนาสด",
+  "convListening": "กำลังฟัง… พูดได้เลย ไม่ต้องแตะ",
+  "convSpeaking": "กำลังฟังคุณ…"
 }

@@ -22,7 +22,9 @@ fully offline, like the Whisper model.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
+from collections.abc import Iterator
 
 log = logging.getLogger("auralink.translate")
 
@@ -87,3 +89,45 @@ def translate(text: str, src: str, tgt: str) -> str:
     result = translator.translate_batch([source], target_prefix=[target_prefix], beam_size=4)
     out_tokens = result[0].hypotheses[0][1:]  # drop the forced target-language prefix token
     return tokenizer.decode(tokenizer.convert_tokens_to_ids(out_tokens), skip_special_tokens=True).strip()
+
+
+def translate_stream(text: str, src: str, tgt: str) -> Iterator[str]:
+    """Like translate(), but yields the growing translation token by token, for a live
+    conversation panel that shows text arriving rather than popping in all at once.
+
+    CTranslate2 only supports a per-token callback at beam_size=1 (greedy, not beam search), so
+    streamed translations are greedy-decoded — a small quality tradeoff against translate()'s
+    beam_size=4, made for the UI feeling alive during a conversation; not used for anything
+    requiring translate()'s best accuracy. The callback itself runs on CTranslate2's own worker
+    thread, so this generator bridges it to the calling thread with a plain queue.Queue (fine for
+    a single utterance at a time: the hub serialises passenger audio per seat already).
+    """
+    if src not in NLLB_LANG:
+        raise KeyError(f"no NLLB code for language {src!r}")
+    if tgt not in NLLB_LANG:
+        raise KeyError(f"no NLLB code for language {tgt!r}")
+    if not text.strip():
+        return
+    translator, tokenizer = _load()
+    tokenizer.src_lang = NLLB_LANG[src]
+    source = tokenizer.convert_ids_to_tokens(tokenizer.encode(text))
+    target_prefix = [NLLB_LANG[tgt]]
+
+    q: queue.Queue = queue.Queue()
+    tokens: list[str] = []
+
+    def on_token(step) -> bool:
+        tokens.append(step.token)
+        partial = tokenizer.decode(tokenizer.convert_tokens_to_ids(tokens), skip_special_tokens=True).strip()
+        q.put(partial)
+        return False  # never ask CTranslate2 to stop early
+
+    def run() -> None:
+        try:
+            translator.translate_batch([source], target_prefix=[target_prefix], beam_size=1, callback=on_token)
+        finally:
+            q.put(None)  # sentinel: decoding finished (or raised; either way, stop waiting)
+
+    threading.Thread(target=run, daemon=True).start()
+    while (item := q.get()) is not None:
+        yield item

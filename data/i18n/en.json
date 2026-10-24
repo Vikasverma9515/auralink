@@ -53,5 +53,8 @@
   "suggestOrSend": "Or send this message to crew (translated, not reviewed)",
   "suggestSendBtn": "Send to crew",
   "suggestOrPicture": "Or pick a picture instead",
-  "settingsTitle": "Settings"
+  "settingsTitle": "Settings",
+  "liveConv": "Live conversation",
+  "convListening": "Listening… just talk, no need to tap",
+  "convSpeaking": "Hearing you…"
 }

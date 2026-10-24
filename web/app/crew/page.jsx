@@ -6,9 +6,10 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Recorder, connect, crewFetch, loadConfig, toBase64 } from "@/lib/hub";
 import { Icon } from "@/lib/icons";
 import { Picto } from "@/lib/pictograms";
-import { canSpeak, speak } from "@/lib/speech";
+import { canSpeak, speakNatural as speak } from "@/lib/speech";
 import { Ambient, AppHeader, ease } from "@/components/ui";
 import { FreeTalkPanel } from "@/components/freetalk";
+import { ConvThread } from "@/components/liveconversation";
 
 const STATUS = {
   urgent_unconfirmed: ["至急・未確認", "Urgent, unconfirmed", "bad"],
@@ -34,6 +35,7 @@ export default function Crew() {
   const [readAloud, setReadAloud] = useState(false);
   const [jaVoice, setJaVoice] = useState(false);
   const [pb, setPb] = useState(null);           // {seat, lang}
+  const [conv, setConv] = useState({});         // seat -> { open, messages: [] }
   const [pa, setPa] = useState(null);           // match result | {busy} | {error} | {sent}
   const [paPick, setPaPick] = useState(null);
   const [paN, setPaN] = useState("");
@@ -77,7 +79,30 @@ export default function Crew() {
     canSpeak("ja").then(setJaVoice);
     loadConfig().then((c) => {
       setCfg(c);
-      socket.current = connect("/ws/crew", (msg) => { if (msg.type === "state") { sideEffects(msg); setState(msg); } }, setOnline);
+      socket.current = connect("/ws/crew", (msg) => {
+        if (msg.type === "state") {
+          sideEffects(msg); setState(msg);
+          setConv((c) => {
+            const open = new Set(msg.conv_seats || []);
+            const next = { ...c };
+            for (const seat of open) next[seat] = { messages: [], ...next[seat], open: true };
+            for (const seat of Object.keys(next)) if (!open.has(seat)) next[seat] = { ...next[seat], open: false };
+            return next;
+          });
+        }
+        else if (msg.type === "conv_state") {
+          setConv((c) => ({ ...c, [msg.seat]: { open: msg.open, messages: c[msg.seat]?.messages || [] } }));
+        } else if (msg.type === "conv_message") {
+          setConv((c) => {
+            const prev = c[msg.seat] || { open: true, messages: [] };
+            const i = prev.messages.findIndex((m) => m.id === msg.id);
+            const messages = i >= 0
+              ? prev.messages.map((m, idx) => (idx === i ? msg : m))
+              : [...prev.messages, msg];
+            return { ...c, [msg.seat]: { ...prev, messages } };
+          });
+        }
+      }, setOnline);
     });
     return () => { socket.current?.close(); removeEventListener("pointerdown", unlock); };
   }, []); // eslint-disable-line
@@ -205,6 +230,7 @@ export default function Crew() {
                 <span key={k}><Icon id={a.icon} /> {new Date(a.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} {a.title_ja} · {a.text_en}</span>))}</div> : null}
             </section>
 
+            {cfg.free_talk ? <CrewLiveConversation conv={conv} send={send} /> : null}
             {cfg.free_talk ? <CrewFreeTalk cfg={cfg} LANG_NAME={LANG_NAME} /> : null}
 
             <section className="panel">
@@ -251,6 +277,40 @@ function CardView({ c, cfg, send, onTalk }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function CrewLiveConversation({ conv, send }) {
+  const openSeats = Object.keys(conv).filter((s) => conv[s]?.open);
+  const [picked, setPicked] = useState(null);
+  const active = picked && openSeats.includes(picked) ? picked : openSeats[0] || null;
+  const thread = active ? conv[active]?.messages || [] : [];
+
+  return (
+    <section className="panel">
+      <div className="row">
+        <span className="panel-title grow">自由会話 Live Conversation <span className="pill dim" style={{ fontWeight: 400, textTransform: "none" }}>unreviewed translation</span></span>
+        {openSeats.length ? (
+          <select aria-label="Seat" value={active || ""} onChange={(e) => setPicked(e.target.value)}>
+            {openSeats.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        ) : null}
+      </div>
+      {!openSeats.length ? (
+        <p className="muted" style={{ margin: 0 }}>進行中のライブ会話はありません · No Live Conversation panel is open right now.</p>
+      ) : (<>
+        <ConvThread messages={thread} mineFrom="crew" />
+        <form className="row" onSubmit={(e) => {
+          e.preventDefault();
+          const input = e.currentTarget.elements.text; const text = input.value.trim();
+          if (!text) return;
+          send({ type: "conv_text", seat: active, text }); input.value = "";
+        }}>
+          <input className="grow" name="text" autoComplete="off" placeholder="日本語で入力…" />
+          <button className="primary" type="submit">送信 Send</button>
+        </form>
+      </>)}
+    </section>
   );
 }
 

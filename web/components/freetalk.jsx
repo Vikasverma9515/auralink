@@ -5,21 +5,7 @@
 import { useState } from "react";
 import { postJson } from "@/lib/hub";
 import { Icon } from "@/lib/icons";
-import { speak } from "@/lib/speech";
-
-async function trySpeak(text, lang) {
-  try {
-    const res = await fetch("/api/freetalk/speak", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, lang }),
-    });
-    if (res.ok) {
-      const url = URL.createObjectURL(await res.blob());
-      new Audio(url).play();
-      return;
-    }
-  } catch { /* fall through to the browser's own voice */ }
-  speak(text, lang);
-}
+import { speakNatural as trySpeak } from "@/lib/speech";
 
 export function FreeTalkPanel({ fromLang, toLang, fromLabel, toLabel, langPicker = null }) {
   const [text, setText] = useState("");

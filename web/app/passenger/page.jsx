@@ -103,6 +103,37 @@ export default function Passenger() {
     </div>);
   }
 
+  function showSettings() {
+    setSheet(<div key="settings" style={{ display: "contents" }}>
+      <h2>{t("settingsTitle")}</h2>
+      <div className="settings-sheet">
+        <div className="settings-row">
+          <span>{t("language")}</span>
+          <select aria-label={t("language")} value={s.lang} onChange={(e) => setLanguage(e.target.value)}>
+            {s.cfg.languages.map((l) => <option key={l.code} value={l.code}>{l.english && l.english !== l.name ? `${l.name} · ${l.english}` : l.name}</option>)}
+          </select>
+        </div>
+        <div className="settings-row">
+          <span>{t("seniorLabel")}</span>
+          <button className="toggle" role="switch" aria-pressed={s.senior} aria-label={t("seniorLabel")}
+            onClick={() => { s.senior = !s.senior; bump(); hello(); }} />
+        </div>
+        <div className="settings-row">
+          <span>{t("picturesLabel")}</span>
+          <button className="toggle" role="switch" aria-pressed={s.pictures} aria-label={t("picturesLabel")}
+            onClick={() => { s.pictures = !s.pictures; bump(); hello(); }} />
+        </div>
+        {s.voiceOK ? (
+          <div className="settings-row">
+            <span>{t("readLabel")}</span>
+            <button className="toggle" role="switch" aria-pressed={s.readAloud} aria-label={t("readLabel")}
+              onClick={() => { s.readAloud = !s.readAloud; if (s.readAloud) speak(t("readLabel"), s.lang); bump(); hello(); }} />
+          </div>
+        ) : null}
+      </div>
+    </div>);
+  }
+
   function showTriage(msg) {
     attention(); say(msg.triage.title);
     setSheet(<div key={`tri-${msg.card_id}`} style={{ display: "contents" }}>
@@ -303,16 +334,12 @@ export default function Passenger() {
       <Ambient />
       {flashFrame}
       <header className="app-header">
-        <span className={`dot ${s.online ? "on" : ""}`} title="Connection" />
-        <h1><AnimatePresence mode="wait"><motion.span key={s.titleOverride || "t"} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{s.titleOverride || t("title")}</motion.span></AnimatePresence></h1>
-        <span className="pill dim">{t("seat")} {s.seat}</span>
-        <select aria-label="Language" value={s.lang} onChange={(e) => setLanguage(e.target.value)}>
-          {s.cfg.languages.map((l) => <option key={l.code} value={l.code}>{l.english && l.english !== l.name ? `${l.name} · ${l.english}` : l.name}</option>)}
-        </select>
-        <label className="row muted"><input type="checkbox" checked={s.senior} onChange={(e) => { s.senior = e.target.checked; bump(); hello(); }} /> {t("seniorLabel")}</label>
-        <label className="row muted"><input type="checkbox" checked={s.pictures} onChange={(e) => { s.pictures = e.target.checked; bump(); hello(); }} /> {t("picturesLabel")}</label>
-        {s.voiceOK && !s.pictures ? <label className="row muted"><input type="checkbox" checked={s.readAloud}
-          onChange={(e) => { s.readAloud = e.target.checked; if (s.readAloud) speak(t("readLabel"), s.lang); bump(); hello(); }} /> {t("readLabel")}</label> : null}
+        <span className="hdr-icon-btn" aria-hidden="true"><span className={`dot ${s.online ? "on" : ""}`} title="Connection" /></span>
+        <div className="grow">
+          <h1><AnimatePresence mode="wait"><motion.span key={s.titleOverride || "t"} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{s.titleOverride || t("title")}</motion.span></AnimatePresence></h1>
+          <p className="hdr-sub">{t("seat")} {s.seat} · {s.cfg.languages.find((l) => l.code === s.lang)?.name || s.lang}</p>
+        </div>
+        <button className="hdr-icon-btn" aria-label={t("settingsTitle")} title={t("settingsTitle")} onClick={showSettings}><Icon id="settings" /></button>
       </header>
 
       <main className="app" style={{ maxWidth: 980 }}>

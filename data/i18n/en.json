@@ -52,5 +52,6 @@
   "suggestDidYouMean": "Did you mean",
   "suggestOrSend": "Or send this message to crew (translated, not reviewed)",
   "suggestSendBtn": "Send to crew",
-  "suggestOrPicture": "Or pick a picture instead"
+  "suggestOrPicture": "Or pick a picture instead",
+  "settingsTitle": "Settings"
 }

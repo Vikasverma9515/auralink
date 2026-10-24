@@ -52,5 +52,6 @@
   "suggestDidYouMean": "คุณหมายถึง",
   "suggestOrSend": "หรือส่งข้อความนี้ให้ลูกเรือ (แปลโดยเครื่อง ยังไม่ได้ตรวจสอบ)",
   "suggestSendBtn": "ส่งให้ลูกเรือ",
-  "suggestOrPicture": "หรือเลือกรูปภาพแทน"
+  "suggestOrPicture": "หรือเลือกรูปภาพแทน",
+  "settingsTitle": "การตั้งค่า"
 }

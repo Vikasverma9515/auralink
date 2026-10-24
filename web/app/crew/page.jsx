@@ -8,6 +8,7 @@ import { Icon } from "@/lib/icons";
 import { Picto } from "@/lib/pictograms";
 import { canSpeak, speak } from "@/lib/speech";
 import { Ambient, AppHeader, ease } from "@/components/ui";
+import { FreeTalkPanel } from "@/components/freetalk";
 
 const STATUS = {
   urgent_unconfirmed: ["至急・未確認", "Urgent, unconfirmed", "bad"],
@@ -204,6 +205,8 @@ export default function Crew() {
                 <span key={k}><Icon id={a.icon} /> {new Date(a.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} {a.title_ja} · {a.text_en}</span>))}</div> : null}
             </section>
 
+            {cfg.free_talk ? <CrewFreeTalk cfg={cfg} LANG_NAME={LANG_NAME} /> : null}
+
             <section className="panel">
               <h2>非常口座席の確認 Exit-row check</h2>
               <p className="muted" style={{ margin: 0 }}>Picture check at boarding. Supports your own briefing and confirmation; it does not replace it.</p>
@@ -232,9 +235,11 @@ function CardView({ c, cfg, send, onTalk }) {
       <div className="body">
         <div className="what">
           {c.intent ? (<><Icon id={c.intent} /><strong>{c.crew_ja}</strong><span className="muted">{c.label_en}</span></>)
+            : c.translated ? (<><Icon id="globe" /><strong>{c.translated}</strong><span className="pill dim">未確認翻訳 unreviewed translation</span></>)
             : (<><strong>推定 Best guesses:</strong>{c.guesses.map((g) => <span key={g.intent} className="guess"><Icon id={g.intent} />{g.label_ja} ({g.score.toFixed(2)})</span>)}</>)}
           <span className={`pill ${tone}`}>{ja} · {en}</span>
           {c.symptom_ja ? <span className="pill bad symptom"><Icon id={c.symptom_icon} />症状 {c.symptom_ja} · {c.symptom_en}</span> : null}
+          {c.voice_stress != null ? <span className="pill bad" title={`voice-stress heuristic, unvalidated: ${c.voice_stress}`}><Icon id="alert" />声が動揺 Voice sounded distressed</span> : null}
           {c.pictures ? <span className="pill violet" title="This passenger uses picture-only mode">絵のみ · Pictures only</span> : null}
         </div>
         {c.heard ? <span className="muted">“{c.heard}” · {c.lang}</span> : null}
@@ -246,6 +251,18 @@ function CardView({ c, cfg, send, onTalk }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function CrewFreeTalk({ cfg, LANG_NAME }) {
+  const [lang, setLang] = useState(cfg.languages[0]?.code || "hi");
+  return (
+    <FreeTalkPanel fromLang="ja" toLang={lang} fromLabel="日本語" toLabel={LANG_NAME[lang] || lang}
+      langPicker={
+        <select aria-label="Passenger language" value={lang} onChange={(e) => setLang(e.target.value)}>
+          {cfg.languages.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+        </select>
+      } />
   );
 }
 

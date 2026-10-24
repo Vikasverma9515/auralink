@@ -47,5 +47,10 @@
   "savedSeat": "Saved. On board, scan the code on your seat and Auralink opens like this.",
   "scanAtSeat": "Your seat link",
   "nextPassenger": "Next passenger",
-  "announcement": "Cabin announcement"
+  "announcement": "Cabin announcement",
+  "suggestTitle": "I'm not fully sure, here's what I understood",
+  "suggestDidYouMean": "Did you mean",
+  "suggestOrSend": "Or send this message to crew (translated, not reviewed)",
+  "suggestSendBtn": "Send to crew",
+  "suggestOrPicture": "Or pick a picture instead"
 }

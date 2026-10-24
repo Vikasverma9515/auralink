@@ -81,6 +81,28 @@ export default function Passenger() {
     </div>);
   }
 
+  function showSuggest(msg) {
+    const { heard, guess, translated } = msg;
+    say(t("suggestTitle"));
+    setSheet(<div key={`suggest-${heard}`} style={{ display: "contents" }}>
+      <h2>{t("suggestTitle")}</h2>
+      <p className="muted" style={{ margin: 0 }}>&ldquo;{heard}&rdquo;</p>
+      {guess ? (
+        <div className="item">
+          <Icon id={guess.intent} /><strong className="grow">{t("suggestDidYouMean")} {guess.label}?</strong>
+          <button className="primary" onClick={() => { socket.current.send({ type: "icon", intent: guess.intent }); showNextConfirm(); }}>{t("yes")}</button>
+        </div>
+      ) : null}
+      {translated ? (
+        <div className="item">
+          <Icon id="globe" /><span className="grow">{translated}</span>
+          <button className="primary" onClick={() => { socket.current.send({ type: "send_free_text", text: heard, translated }); closeSheet(); }}>{t("suggestSendBtn")}</button>
+        </div>
+      ) : null}
+      <button className="link" onClick={() => showGrid()}>{t("suggestOrPicture")}</button>
+    </div>);
+  }
+
   function showTriage(msg) {
     attention(); say(msg.triage.title);
     setSheet(<div key={`tri-${msg.card_id}`} style={{ display: "contents" }}>
@@ -162,10 +184,11 @@ export default function Passenger() {
   }
 
   function onMessage(msg) {
-    if (["confirm", "grid", "status", "error"].includes(msg.type) && s.micState === "thinking") setMic("idle");
+    if (["confirm", "grid", "status", "error", "suggest"].includes(msg.type) && s.micState === "thinking") setMic("idle");
     if (msg.type === "thinking") setMic("thinking");
     else if (msg.type === "confirm") { s.pending = msg.cards; showNextConfirm(); }
     else if (msg.type === "grid") showGrid(msg.card_id);
+    else if (msg.type === "suggest") showSuggest(msg);
     else if (msg.type === "status") {
       const c = msg.card;
       const shown = c.intent || c.options?.[0] || { intent: "call_crew", label: "" };

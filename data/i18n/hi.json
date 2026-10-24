@@ -47,5 +47,10 @@
   "savedSeat": "सेव हो गया। विमान में अपनी सीट पर लगा कोड स्कैन करें, Auralink इसी तरह खुलेगा।",
   "scanAtSeat": "आपकी सीट का लिंक",
   "nextPassenger": "अगला यात्री",
-  "announcement": "केबिन घोषणा"
+  "announcement": "केबिन घोषणा",
+  "suggestTitle": "पूरी तरह निश्चित नहीं, पर मैंने ऐसा समझा",
+  "suggestDidYouMean": "क्या आपका मतलब था",
+  "suggestOrSend": "या यह संदेश क्रू को भेजें (अनुवादित, जाँचा नहीं गया)",
+  "suggestSendBtn": "क्रू को भेजें",
+  "suggestOrPicture": "या इसके बजाय एक तस्वीर चुनें"
 }

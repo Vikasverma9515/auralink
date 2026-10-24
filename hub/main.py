@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from engine import PHASES, Context, Hypothesis, Lexicon, interpret
 from engine.lexicon import ROOT
+from engine.matcher import tokenize
 from engine.types import Phase
 
 from . import auth, checkin, demo, languages, pa, persist, recordings, rounds
@@ -35,6 +36,18 @@ ASR_MODEL = os.environ.get("AURALINK_ASR_MODEL", "base")  # base: ~0.7 s on an M
 # in tests with spoken PAs, `small` heard them right in ~3-5 s. Passenger requests stay on the fast model.
 PA_ASR_MODEL = os.environ.get("AURALINK_PA_ASR_MODEL", "small")
 MAX_AUDIO_S = 10
+# Free Talk needs ctranslate2 + transformers + a ~2.4 GB model (downloaded once, then offline).
+# Heavy enough that it is opt-out rather than always-on: AURALINK_FREE_TALK=0 hides it even when
+# the dependencies are installed, for a laptop that would rather keep the RAM for Whisper.
+FREE_TALK_ENABLED = os.environ.get("AURALINK_FREE_TALK", "1") != "0"
+
+
+def free_talk_available() -> bool:
+    if not FREE_TALK_ENABLED:
+        return False
+    from engine.translate import available
+
+    return available()
 _models: dict[str, object] = {}
 _asr_lock = threading.Lock()
 
@@ -64,6 +77,51 @@ def warm_matcher() -> None:
     if hasattr(sim, "warm"):
         sim.warm([v for i in lexicon.intents for v in lexicon.variants(i.id)] + sorted(lexicon.stopwords))
     log.info("matcher ready: %s", getattr(sim, "name", "text"))
+
+
+# --- cascade when nothing in the fixed list matched: try understanding by meaning, then by
+# translating what was actually typed/said, before falling back to "pick a picture". Both are
+# best-effort and never auto-send; the passenger always confirms. ------------------------------
+
+_semantic_sim = None
+_semantic_lock = threading.Lock()
+SUGGEST_T1 = 0.45   # lower bar than the matcher's normal T1=0.70: this only offers a confirm
+
+
+def _get_semantic_sim():
+    global _semantic_sim
+    with _semantic_lock:
+        if _semantic_sim is None:
+            from engine.matcher import make_similarity
+
+            _semantic_sim = make_similarity("trimodal")
+        return _semantic_sim
+
+
+def _semantic_guess(text: str, phase: str, lang: str) -> dict | None:
+    try:
+        sim = _get_semantic_sim()
+        result = interpret([Hypothesis(text=text)], Context(seat="x", phase=phase), lexicon, t1=SUGGEST_T1, sim=sim)
+    except Exception as e:  # fastembed/model not installed or not downloaded
+        log.info("semantic suggestion unavailable (%s)", e)
+        return None
+    if not result.cards:
+        return None
+    top = result.cards[0].candidates[0]
+    i = lexicon.get(top.intent)
+    return {"intent": top.intent, "icon": i.icon, "label": lexicon.label(top.intent, lang), "score": top.score}
+
+
+def _free_text_translation(text: str, lang: str) -> str | None:
+    if not free_talk_available() or lang == "ja":
+        return None
+    try:
+        from engine.translate import translate
+
+        return translate(text, lang, "ja")
+    except Exception as e:
+        log.info("free talk suggestion unavailable (%s)", e)
+        return None
 
 
 @asynccontextmanager
@@ -239,6 +297,52 @@ def explain_text(body: InterpretIn) -> dict:
     result = interpret([Hypothesis(text=body.text)], Context(seat="demo", phase=body.phase), lexicon)
     return {"source": "typed", "seat": None, "phase": body.phase,
             "explain": explain(result, lexicon, default_similarity(), body.phase)}
+
+
+# --- Free Talk: open-vocabulary translation for anything outside the fixed intent list -------------
+# Unreviewed, unlike everything above: never used for safety briefings, exit rows or PA captions.
+
+class FreeTalkIn(BaseModel):
+    text: str = Field(min_length=1, max_length=400)
+    src: str = Field(pattern=r"^[a-z]{2,3}$")
+    tgt: str = Field(pattern=r"^[a-z]{2,3}$")
+
+
+@app.post("/api/freetalk/translate")
+def freetalk_translate(body: FreeTalkIn) -> dict:
+    from engine.translate import translate
+
+    if body.src == body.tgt:
+        return {"translated": body.text, "src": body.src, "tgt": body.tgt}
+    try:
+        t0 = time.perf_counter()
+        translated = translate(body.text, body.src, body.tgt)
+        return {"translated": translated, "src": body.src, "tgt": body.tgt,
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+    except KeyError as e:
+        raise HTTPException(422, str(e)) from e
+    except Exception as e:  # model not downloaded yet, no network on first use, ctranslate2/transformers missing
+        log.warning("free talk translation unavailable (%s)", e)
+        raise HTTPException(503, "Free Talk is not ready on this hub yet (model still downloading or missing)") from e
+
+
+class FreeTalkSpeakIn(BaseModel):
+    text: str = Field(min_length=1, max_length=400)
+    lang: str = Field(pattern=r"^[a-z]{2,3}$")
+
+
+@app.post("/api/freetalk/speak")
+def freetalk_speak(body: FreeTalkSpeakIn) -> Response:
+    from engine.tts import synthesize
+
+    try:
+        wav = synthesize(body.text, body.lang)
+    except Exception as e:  # model files missing, kokoro-onnx not installed
+        log.warning("free talk TTS unavailable (%s)", e)
+        raise HTTPException(503, "Free Talk voice is not ready on this hub yet") from e
+    if wav is None:  # Kokoro has no voice for this language; caller falls back to the browser's own voice
+        raise HTTPException(422, f"no Free Talk voice for language {body.lang!r}")
+    return Response(content=wav, media_type="audio/wav")
 
 
 # --- presenter console (demo control): same code paths as the real screens -----------------------
@@ -428,6 +532,7 @@ def config() -> dict:
         "exit_seats": exit_seats(),
         "languages": [{"code": lang["code"], "name": lang["name"], "english": lang.get("english", lang["name"])}
                       for lang in languages.registry()],
+        "free_talk": free_talk_available(),
     }
 
 
@@ -465,7 +570,8 @@ async def passenger_ws(ws: WebSocket, seat: str) -> None:
 async def interpret_and_reply(seat: str, text: str, nbest: list[Hypothesis] | None = None,
                               asr: dict | None = None) -> None:
     s = cabin.seats[seat]
-    result, cards, escalated = cabin.handle_text(seat, text, nbest, source="voice" if asr else "text")
+    result, cards, escalated = cabin.handle_text(seat, text, nbest, source="voice" if asr else "text",
+                                                 voice_stress=(asr or {}).get("voice_stress", 0.0))
     if asr:
         result.latency_ms = {**asr["latency_ms"], **result.latency_ms}
     if judges:
@@ -474,12 +580,22 @@ async def interpret_and_reply(seat: str, text: str, nbest: list[Hypothesis] | No
         why = explain(result, lexicon, default_similarity(), cabin.phase, audio=asr and asr.get("audio"),
                       speech=asr and asr.get("speech"), rejected=asr and asr["rejected"])
         await _send(judges, {"type": "result", "seat": seat, "source": "voice" if asr else "text",
-                             "phase": cabin.phase, "result": result.model_dump(), "explain": why})
+                             "phase": cabin.phase, "result": result.model_dump(), "explain": why,
+                             "voice_stress": asr and asr.get("voice_stress")})
     if cards:
         await to_seat(seat, {"type": "confirm", "rule": result.rule,
                              "cards": [card_for_passenger(c, s.lang) for c in cards]})
     elif escalated:
         await send_status(escalated, "needs_human")
+    elif len(tokenize(text)) >= 2:   # a single word ("hi", "hmm") isn't enough to guess or translate
+        guess, translated = await asyncio.gather(
+            asyncio.to_thread(_semantic_guess, text, cabin.phase, s.lang),
+            asyncio.to_thread(_free_text_translation, text, s.lang),
+        )
+        if guess or translated:
+            await to_seat(seat, {"type": "suggest", "heard": text, "guess": guess, "translated": translated})
+        else:
+            await to_seat(seat, {"type": "grid", "reason": result.rule})
     else:
         await to_seat(seat, {"type": "grid", "reason": result.rule})
     if any(c.urgent for c in cards):
@@ -500,9 +616,12 @@ async def handle_audio(seat: str, pcm: bytes) -> None:
         await to_seat(seat, {"type": "grid", "reason": "voice_unavailable"})
         return
     top = tr.hypotheses[0].text if tr.hypotheses else ""
+    from engine.prosody import analyze as analyze_prosody
+
+    stress = await asyncio.to_thread(analyze_prosody, audio)
     await interpret_and_reply(seat, top, tr.hypotheses or [Hypothesis(text="")],
                               asr={"latency_ms": tr.latency_ms, "rejected": tr.rejected,
-                                   "audio": audio, "speech": tr.speech})
+                                   "audio": audio, "speech": tr.speech, "voice_stress": stress.score})
     await push_crew()
 
 
@@ -538,6 +657,10 @@ async def handle_passenger(seat: str, msg: dict) -> None:
         card = cabin.confirm(msg["card_id"], msg["intent"])
         await send_status(card, "urgent" if card.urgent else "sent")
         await ask_symptom(card)
+
+    elif kind == "send_free_text":
+        card = cabin.escalate_free_text(seat, msg.get("text", ""), msg.get("translated"))
+        await send_status(card, "needs_human")
 
     elif kind == "symptom":
         card = cabin.set_symptom(msg["card_id"], msg.get("symptom"), templates.symptom_ids)
